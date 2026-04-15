@@ -1,0 +1,25 @@
+{
+  "name": "@butterpay/core",
+  "version": "0.1.0",
+  "description": "ButterPay Core SDK - wallet, payment, and API client",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["butterpay", "crypto", "payment", "sdk"],
+  "license": "MIT",
+  "dependencies": {
+    "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
+    "viem": "^2.47.10"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2"
+  }
+}
