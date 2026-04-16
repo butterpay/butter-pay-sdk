@@ -32,4 +32,4 @@ export type {
 } from "./types.js";
 
 // ABIs
-export { ERC20_ABI, PAYMENT_ROUTER_ABI, PAYMENT_RECEIVER_ABI } from "./abi/index.js";
+export { ERC20_ABI, PAYMENT_ROUTER_ABI } from "./abi/index.js";

@@ -25,7 +25,6 @@ const PERMIT_TOKENS = new Set([
   "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // ETH USDC
   "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // ARB USDC
   "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // Polygon USDC
-  "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", // OP USDC
 ].map((a) => a.toLowerCase()));
 
 export class CryptoPaymentProvider implements PaymentProvider {
@@ -168,7 +167,7 @@ export class CryptoPaymentProvider implements PaymentProvider {
       // Permit path: one signature (no separate approve tx needed)
       // TODO: build proper EIP-2612 permit signature via wallet.signTypedData
       // For now, fallback to approve path
-      await this.ensureApproval(params.chain, tokenCfg.address, params.paymentReceiverAddress, amountWei);
+      await this.ensureApproval(params.chain, tokenCfg.address, params.paymentRouterAddress, amountWei);
       data = encodeFunctionData({
         abi: PAYMENT_ROUTER_ABI,
         functionName: "pay",
@@ -176,7 +175,7 @@ export class CryptoPaymentProvider implements PaymentProvider {
       });
     } else {
       // Approve path: two signatures
-      await this.ensureApproval(params.chain, tokenCfg.address, params.paymentReceiverAddress, amountWei);
+      await this.ensureApproval(params.chain, tokenCfg.address, params.paymentRouterAddress, amountWei);
       data = encodeFunctionData({
         abi: PAYMENT_ROUTER_ABI,
         functionName: "pay",
@@ -185,7 +184,7 @@ export class CryptoPaymentProvider implements PaymentProvider {
     }
 
     const txHash = await this.wallet.sendTransaction({
-      to: params.paymentReceiverAddress,
+      to: params.paymentRouterAddress,
       data,
       chainId: chainCfg.viemChain.id,
     });

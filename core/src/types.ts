@@ -2,13 +2,13 @@ import type { Address, Hash, Chain as ViemChain } from "viem";
 
 // ========================= Chains =========================
 
-export type ChainName = "ethereum" | "arbitrum" | "bsc" | "polygon" | "optimism";
+export type ChainName = "ethereum" | "arbitrum" | "bsc" | "polygon" | "arbitrumSepolia";
 
 export interface ChainConfig {
   name: ChainName;
   viemChain: ViemChain;
   rpcUrl: string;
-  paymentReceiverAddress: Address;
+  paymentRouterAddress: Address;
   tokens: TokenConfig[];
   blockExplorerUrl: string;
 }
@@ -76,7 +76,7 @@ export interface PayParams {
   token: string;
   amount: string; // human-readable decimal
   merchantAddress: Address;
-  paymentReceiverAddress: Address;
+  paymentRouterAddress: Address;
   invoiceIdBytes32: `0x${string}`; // bytes32 invoice ID for contract
   serviceFeeBps: number;
   referrer?: Address;
@@ -95,7 +95,9 @@ export interface PayResult {
 export interface Invoice {
   id: string;
   merchantId: string;
+  merchantName?: string;
   merchantOrderId?: string;
+  merchantReceivingAddresses?: Record<string, string>;
   amount: string;
   token: string;
   chain: string;
@@ -105,7 +107,9 @@ export interface Invoice {
   txHash?: string;
   serviceFee?: string;
   merchantReceived?: string;
+  description?: string;
   expiresAt?: string;
+  redirectUrl?: string;
   createdAt: string;
 }
 

@@ -45,9 +45,8 @@ export class ApiClient {
   // ========================= Invoice =========================
 
   async createInvoice(params: {
-    amount: string;
-    token: string;
-    chain: string;
+    amountUsd: string;
+    chain?: string;
     description?: string;
     merchantOrderId?: string;
     metadata?: Record<string, unknown>;
@@ -61,12 +60,36 @@ export class ApiClient {
     return this.request("GET", `/v1/invoices/${id}`);
   }
 
+  // ========================= Payment Session =========================
+
+  /**
+   * Get a payment session token (required before submitting tx).
+   * Binds the invoice to a specific payer wallet address.
+   */
+  async getPaymentSession(
+    invoiceId: string,
+    payerAddress: string
+  ): Promise<string> {
+    const res = await this.request<{ sessionToken: string }>(
+      "POST",
+      `/v1/invoices/${invoiceId}/session`,
+      { payerAddress }
+    );
+    return res.sessionToken;
+  }
+
+  /**
+   * Submit a transaction for tracking (requires valid sessionToken).
+   */
   async submitTransaction(
     invoiceId: string,
     params: {
+      sessionToken: string;
       txHash: string;
       payerAddress: string;
       toAddress: string;
+      chain: string;
+      token: string;
     }
   ): Promise<{ txId: string; status: string }> {
     return this.request("POST", `/v1/invoices/${invoiceId}/tx`, params);

@@ -65,17 +65,18 @@ export class ButterPay {
   /**
    * Full payment flow:
    * 1. Create invoice via API
-   * 2. Approve token
-   * 3. Call PaymentReceiver.pay()
-   * 4. Submit txHash to API for tracking
-   * 5. Optionally wait for confirmation
+   * 2. Get payment session token (binds invoice to payer wallet)
+   * 3. Approve token
+   * 4. Call PaymentRouter.pay()
+   * 5. Submit txHash to API for tracking (with sessionToken)
+   * 6. Optionally wait for confirmation
    */
   async pay(params: {
     amount: string;
     token: string;
     chain: ChainName;
     merchantAddress: Address;
-    paymentReceiverAddress: Address;
+    paymentRouterAddress: Address;
     serviceFeeBps: number;
     referrer?: Address;
     referrerFeeBps?: number;
@@ -89,18 +90,20 @@ export class ButterPay {
 
     // 1. Create invoice
     const invoice = await this.api.createInvoice({
-      amount: params.amount,
-      token: params.token,
+      amountUsd: params.amount,
       chain: params.chain,
       description: params.description,
       merchantOrderId: params.merchantOrderId,
       metadata: params.metadata,
     });
 
-    // 2. Compute bytes32 invoice ID for contract
+    // 2. Get payment session token
+    const sessionToken = await this.api.getPaymentSession(invoice.id, address);
+
+    // 3. Compute bytes32 invoice ID for contract
     const invoiceIdBytes32 = keccak256(toHex(invoice.id));
 
-    // 3. Execute payment on-chain
+    // 4. Execute payment on-chain
     const deadline = Math.floor(Date.now() / 1000) + 1800; // 30 min
     const result = await this.cryptoProvider.pay({
       invoiceId: invoice.id,
@@ -108,7 +111,7 @@ export class ButterPay {
       token: params.token,
       amount: params.amount,
       merchantAddress: params.merchantAddress,
-      paymentReceiverAddress: params.paymentReceiverAddress,
+      paymentRouterAddress: params.paymentRouterAddress,
       invoiceIdBytes32,
       serviceFeeBps: params.serviceFeeBps,
       referrer: params.referrer,
@@ -116,14 +119,17 @@ export class ButterPay {
       deadline,
     });
 
-    // 4. Submit tx for tracking
+    // 5. Submit tx for tracking (with sessionToken)
     await this.api.submitTransaction(invoice.id, {
+      sessionToken,
       txHash: result.txHash,
       payerAddress: address,
-      toAddress: params.paymentReceiverAddress,
+      toAddress: params.paymentRouterAddress,
+      chain: params.chain,
+      token: params.token,
     });
 
-    // 5. Optionally wait
+    // 6. Optionally wait
     if (params.waitForConfirmation) {
       const confirmed = await this.api.waitForConfirmation(invoice.id);
       return { invoice: confirmed, txHash: result.txHash };

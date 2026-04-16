@@ -113,6 +113,3 @@ export const PAYMENT_ROUTER_ABI = [
     outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
-
-// Keep backward compat alias
-export const PAYMENT_RECEIVER_ABI = PAYMENT_ROUTER_ABI;
