@@ -16,6 +16,8 @@ const DEFAULT_PAYMENT_ROUTER = "0x0000000000000000000000000000000000000000" as c
 
 // Testnet deployed address
 const TESTNET_PAYMENT_ROUTER = "0x2bb7f9678c6FC1F2538172F5621087a9D44F9D63" as const;
+const TESTNET_SUBSCRIPTION_MANAGER = "0x51Aaf344ee7b3d35e8347afbDA777e45c7441cd6" as const;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 const USDT: Record<ChainName, `0x${string}`> = {
   ethereum: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -39,6 +41,7 @@ export const defaultChainConfigs: Record<ChainName, ChainConfig> = {
     viemChain: mainnet,
     rpcUrl: "https://ethereum-rpc.publicnode.com",
     paymentRouterAddress: DEFAULT_PAYMENT_ROUTER,
+    subscriptionManagerAddress: ZERO_ADDRESS,
     blockExplorerUrl: "https://etherscan.io",
     tokens: [
       { symbol: "USDT", address: USDT.ethereum, decimals: 6 },
@@ -50,6 +53,7 @@ export const defaultChainConfigs: Record<ChainName, ChainConfig> = {
     viemChain: arbitrum,
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     paymentRouterAddress: DEFAULT_PAYMENT_ROUTER,
+    subscriptionManagerAddress: ZERO_ADDRESS,
     blockExplorerUrl: "https://arbiscan.io",
     tokens: [
       { symbol: "USDT", address: USDT.arbitrum, decimals: 6 },
@@ -61,6 +65,7 @@ export const defaultChainConfigs: Record<ChainName, ChainConfig> = {
     viemChain: bsc,
     rpcUrl: "https://bsc-rpc.publicnode.com",
     paymentRouterAddress: DEFAULT_PAYMENT_ROUTER,
+    subscriptionManagerAddress: ZERO_ADDRESS,
     blockExplorerUrl: "https://bscscan.com",
     tokens: [
       { symbol: "USDT", address: USDT.bsc, decimals: 18 },
@@ -72,6 +77,7 @@ export const defaultChainConfigs: Record<ChainName, ChainConfig> = {
     viemChain: polygon,
     rpcUrl: "https://polygon-bor-rpc.publicnode.com",
     paymentRouterAddress: DEFAULT_PAYMENT_ROUTER,
+    subscriptionManagerAddress: ZERO_ADDRESS,
     blockExplorerUrl: "https://polygonscan.com",
     tokens: [
       { symbol: "USDT", address: USDT.polygon, decimals: 6 },
@@ -83,6 +89,7 @@ export const defaultChainConfigs: Record<ChainName, ChainConfig> = {
     viemChain: arbitrumSepolia,
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
     paymentRouterAddress: TESTNET_PAYMENT_ROUTER,
+    subscriptionManagerAddress: TESTNET_SUBSCRIPTION_MANAGER,
     blockExplorerUrl: "https://sepolia.arbiscan.io",
     tokens: [
       { symbol: "USDT", address: USDT.arbitrumSepolia, decimals: 6 },

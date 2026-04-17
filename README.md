@@ -18,6 +18,7 @@ Official TypeScript SDKs for [ButterPay](https://github.com/butterpay) — non-c
 - [Quick Start (All-in-One)](#quick-start-all-in-one)
 - [Step-by-Step Usage](#step-by-step-usage)
 - [Server-Side Usage (Merchant Backend)](#server-side-usage-merchant-backend)
+- [Subscriptions](#subscriptions)
 - [Custom Chain Configuration](#custom-chain-configuration)
 - [React Integration Example](#react-integration-example)
 - [HD Wallet (Phase 2)](#hd-wallet-phase-2)
@@ -74,22 +75,26 @@ npm link @butterpay/core
 │   │   ├── ensureApproval()              │ — ERC20 allowance mgmt
 │   │   ├── pay()                         │ — stablecoin payment
 │   │   └── swapAndPay()                  │ — DEX swap + payment (atomic)
+│   ├── SubscriptionProvider              │
+│   │   ├── computeApproveAmount()        │ — amountPerPeriod × cycles
+│   │   ├── ensureSubscriptionAllowance() │ — approve exact subscription total
+│   │   ├── subscribe()                   │ — on-chain subscribe + 1st charge
+│   │   └── cancel()                      │ — on-chain cancel
 │   └── ApiClient (fetch-based HTTP)      │
-│       ├── createInvoice()               │
-│       ├── getInvoice()                  │
-│       ├── submitTransaction()           │
-│       └── waitForConfirmation()         │
+│       ├── Invoice: createInvoice / getInvoice / submitTransaction / ...
+│       ├── Plan:    createPlan / listPlans / getPlan / updatePlan / deletePlan
+│       └── Subscription: subscribeToPlan / listSubscriptions / ...
 └─────────────────────────────────────────┘
                   │
                   ▼
-        Backend API + PaymentRouter Contract
+   Backend API + PaymentRouter + SubscriptionManager Contracts
 ```
 
 Three layers:
 
 1. **Wallet layer** — abstracts user's wallet (external like MetaMask, or self-built HD wallet)
-2. **Payment layer** — scans balances, manages approvals, executes on-chain payments
-3. **API layer** — communicates with ButterPay backend (invoice CRUD, tx tracking)
+2. **Payment layer** — `CryptoPaymentProvider` for one-time payments; `SubscriptionProvider` for on-chain subscriptions
+3. **API layer** — communicates with ButterPay backend (invoice CRUD, plan CRUD, subscription registration, tx tracking)
 
 The `ButterPay` class orchestrates all three into a single `pay()` call.
 
@@ -245,6 +250,173 @@ const status = await api.getInvoice(invoice.id);
 
 ---
 
+## Subscriptions
+
+ButterPay supports **non-custodial on-chain recurring payments** via the `SubscriptionManager` contract. The subscriber approves a bounded allowance (`amountPerPeriod × cycles`) once, and the backend scheduler calls `charge()` at each interval. The subscriber can cancel anytime.
+
+### Subscription Model
+
+| Role | What they do |
+|---|---|
+| **Merchant** | Creates a `Plan` (name, price, interval, cycles) via Dashboard or API |
+| **User** | Visits `/subscribe/[planId]`, connects wallet, approves + subscribes on-chain |
+| **Backend Scheduler** | Calls `SubscriptionManager.charge(onChainId)` every interval |
+| **Contract** | Pulls tokens from user wallet → transfers to merchant (+ service fee) |
+
+### Merchant — Create a Plan (server-side)
+
+```ts
+import { ApiClient } from "@butterpay/core";
+
+const api = new ApiClient({
+  baseUrl: "https://api.butterpay.io",
+  apiKey: process.env.BUTTERPAY_API_KEY,
+});
+
+// Create a $9.99/month plan, 12 cycles total = 1 year
+const plan = await api.createPlan({
+  name: "Premium Monthly",
+  description: "Full access to all features",
+  amountUsd: "9.99",
+  intervalSeconds: 30 * 24 * 60 * 60,   // 30 days
+  cycles: 12,
+  chain: "arbitrumSepolia",
+  token: "USDT",
+});
+
+// Share this URL with users
+const subscribeUrl = `https://butterpay.io/subscribe/${plan.id}`;
+```
+
+Plan management:
+
+```ts
+const myPlans = await api.listPlans();
+const plan    = await api.getPlan("plan_abc");
+await api.updatePlan("plan_abc", { active: false }); // stop new sign-ups
+await api.deletePlan("plan_abc");                    // fails if live subscribers exist
+```
+
+### User — Subscribe to a Plan (browser)
+
+One call handles: fetch plan → approve `amount × cycles` → `SubscriptionManager.subscribe()` → register with backend.
+
+```ts
+import { ButterPay, ExternalWalletAdapter } from "@butterpay/core";
+
+const butterpay = new ButterPay({
+  apiUrl: "https://api.butterpay.io",
+  wallet: new ExternalWalletAdapter((window as any).ethereum),
+});
+
+await butterpay.connect();
+
+const { subscription, onChainId, approveTxHash, subscribeTxHash } =
+  await butterpay.subscribe({ planId: "plan_abc" });
+
+console.log(`On-chain ID: ${onChainId}`);
+console.log(`Approve tx:  ${approveTxHash}`);   // undefined if allowance was already sufficient
+console.log(`Subscribe tx: ${subscribeTxHash}`);
+console.log(`Status: ${subscription.status}`);  // "active"
+```
+
+### Step-by-Step (Custom UI)
+
+For UIs that want to show progress between approve and subscribe steps:
+
+```ts
+import {
+  ExternalWalletAdapter,
+  ApiClient,
+  SubscriptionProvider,
+} from "@butterpay/core";
+
+const wallet = new ExternalWalletAdapter((window as any).ethereum);
+const api = new ApiClient({ baseUrl: "https://api.butterpay.io" });
+const provider = new SubscriptionProvider(wallet);
+
+await wallet.connect();
+const subscriberAddress = wallet.getAddress()!;
+
+// 1. Fetch plan details (public endpoint — no auth needed)
+const plan = await api.getPlan("plan_abc");
+
+// 2. Display total approval amount to user
+const approveAmount = provider.computeApproveAmount(plan);
+console.log(`Will approve ${approveAmount} token-units total`);
+// e.g., $9.99 × 12 cycles × 10^6 (USDC decimals) = 119,880,000
+
+// 3. On-chain approve + subscribe (emits 1-2 txs depending on existing allowance)
+const subManagerAddr = "0x51Aaf344ee7b3d35e8347afbDA777e45c7441cd6"; // Arb Sepolia
+const { onChainId, approveTxHash, subscribeTxHash } = await provider.subscribe({
+  plan,
+  subscriberAddress,
+  subscriptionManagerAddress: subManagerAddr,
+});
+
+// 4. Register subscription with backend scheduler
+const subscription = await api.subscribeToPlan(plan.id, {
+  subscriberAddress,
+  onChainId,
+  txHash: subscribeTxHash,
+});
+```
+
+### Cancel a Subscription
+
+```ts
+// From the user's side (browser): performs on-chain cancel + backend update
+const { cancelTxHash, subscription } =
+  await butterpay.cancelSubscription("sub_xyz");
+
+// From the merchant's side (Dashboard): only updates backend record
+await butterpay.cancelSubscription("sub_xyz", { apiOnly: true });
+```
+
+Note: once the subscriber's ERC20 allowance is consumed (`amount × cycles` fully charged), the contract stops pulling funds automatically — no cancellation needed at the end of a full subscription term.
+
+### Subscription Flow Diagram
+
+```
+User                           SDK                       Contract                  Backend
+ │                              │                           │                        │
+ │── click "Subscribe" ────────>│                           │                        │
+ │                              │── getPlan() ─────────────────────────────────────>│
+ │                              │<────────────── plan data ─────────────────────────│
+ │                              │                           │                        │
+ │<── approve amount × cycles ──│                           │                        │
+ │── sign tx ──────────────────>│── wallet.sendTransaction ─>│                        │
+ │                              │                           │── approve on ERC20    │
+ │                              │<── tx receipt ────────────│                        │
+ │                              │                           │                        │
+ │<── subscribe ────────────────│                           │                        │
+ │── sign tx ──────────────────>│── SubManager.subscribe() ─>│                        │
+ │                              │                           │── create subscription │
+ │                              │                           │── 1st charge          │
+ │                              │                           │── emit Created event  │
+ │                              │<── decode onChainId ──────│                        │
+ │                              │                           │                        │
+ │                              │── api.subscribeToPlan() ─────────────────────────>│
+ │                              │                           │          save to DB ──│
+ │                              │                           │                        │
+ │<── { subscription } ─────────│                           │                        │
+ │                              │                           │                        │
+ │            ... every interval (e.g. 30 days) ...          │                        │
+ │                              │                           │                        │
+ │                              │                           │<── scheduler charges ─│
+ │                              │                           │── pull from wallet    │
+ │                              │                           │                        │
+```
+
+### Key Safety Properties
+
+- **Bounded allowance** — Subscriber approves exactly `amount × cycles`, never unlimited. After that amount is consumed, charges stop even if the scheduler misbehaves.
+- **On-chain cancel** — `SubscriptionManager.cancel()` is callable by the subscriber at any time; no backend cooperation required.
+- **Per-charge caps** — Each `charge()` pulls at most `amount` (per period); contract enforces the interval.
+- **Non-custodial** — Tokens move directly from user → merchant; the contract never holds user funds.
+
+---
+
 ## Custom Chain Configuration
 
 Override RPC URLs, contract addresses, or token lists (useful for testnet or custom deployments):
@@ -390,16 +562,17 @@ Security recommendations:
 
 | Export | Kind | Purpose |
 |---|---|---|
-| `ButterPay` | class | Main entry — orchestrates wallet + provider + API |
+| `ButterPay` | class | Main entry — orchestrates wallet + providers + API |
 | `ButterPayConfig` | type | Constructor options for `ButterPay` |
 | `ExternalWalletAdapter` | class | Wraps EIP-1193 providers (MetaMask, OKX, ...) |
 | `HDWalletAdapter` | class | BIP39/BIP44 HD wallet (Phase 2) |
-| `CryptoPaymentProvider` | class | Low-level payment executor |
+| `CryptoPaymentProvider` | class | Low-level one-time payment executor |
+| `SubscriptionProvider` | class | Low-level on-chain subscription executor |
 | `ApiClient` | class | HTTP client for ButterPay backend |
 | `ApiClientConfig` | type | Options for `ApiClient` |
-| `defaultChainConfigs` | const | Default 5-chain config (RPC + contract + tokens) |
-| `ERC20_ABI` / `PAYMENT_ROUTER_ABI` | const | Contract ABIs |
-| Types: `ChainName` / `ChainConfig` / `TokenConfig` / `WalletAdapter` / `TransactionRequest` / `PaymentProvider` / `PayParams` / `PayResult` / `Invoice` / `BalanceInfo` / `Keystore` / `HDWalletConfig` / `PaymentMethod` | type | TypeScript types |
+| `defaultChainConfigs` | const | Default 5-chain config (RPC + contracts + tokens) |
+| `ERC20_ABI` / `PAYMENT_ROUTER_ABI` / `SUBSCRIPTION_MANAGER_ABI` | const | Contract ABIs |
+| Types: `ChainName` / `ChainConfig` / `TokenConfig` / `WalletAdapter` / `TransactionRequest` / `PaymentProvider` / `PayParams` / `PayResult` / `Invoice` / `BalanceInfo` / `Keystore` / `HDWalletConfig` / `PaymentMethod` / `Plan` / `Subscription` / `SubscribeParams` / `SubscribeResult` | type | TypeScript types |
 
 ### `ButterPay` (class)
 
@@ -407,14 +580,35 @@ Security recommendations:
 new ButterPay(config: ButterPayConfig)
 ```
 
+**Wallet & Payments**
+
 | Method | Returns | Description |
 |---|---|---|
 | `connect()` | `Promise<Address>` | Connect the wallet |
 | `getAddress()` | `Address \| null` | Get connected address |
 | `scanBalances()` | `Promise<BalanceInfo[]>` | Scan balances across all chains |
-| `pay(params)` | `Promise<{ invoice, txHash }>` | Full payment flow |
+| `pay(params)` | `Promise<{ invoice, txHash }>` | Full one-time payment flow |
 | `getInvoice(id)` | `Promise<Invoice>` | Query invoice status |
 | `waitForConfirmation(id)` | `Promise<Invoice>` | Poll until confirmed |
+
+**Subscription Plans (merchant)**
+
+| Method | Returns | Description |
+|---|---|---|
+| `createPlan(params)` | `Promise<Plan>` | Create a new subscription plan (apiKey required) |
+| `listPlans()` | `Promise<Plan[]>` | List the merchant's plans |
+| `getPlan(planId)` | `Promise<Plan>` | Fetch a plan (public endpoint) |
+| `updatePlan(id, updates)` | `Promise<Plan>` | Update plan fields |
+| `deletePlan(id)` | `Promise<{ deleted }>` | Delete plan (fails if live subscribers exist) |
+
+**Subscriptions (user flow)**
+
+| Method | Returns | Description |
+|---|---|---|
+| `subscribe({ planId })` | `Promise<SubscribeResult>` | Full subscribe flow: approve + subscribe + register |
+| `listSubscriptions(status?)` | `Promise<Subscription[]>` | Merchant's subscribers |
+| `getSubscription(id)` | `Promise<Subscription>` | Fetch a subscription |
+| `cancelSubscription(id, { apiOnly? })` | `Promise<{ subscription, cancelTxHash? }>` | Cancel (on-chain + backend) |
 
 ### `CryptoPaymentProvider` (class)
 
@@ -426,14 +620,45 @@ new ButterPay(config: ButterPayConfig)
 | `pay(params)` | Execute stablecoin payment (auto picks `pay` vs `payWithPermit`) |
 | `swapAndPay(params)` | Atomic DEX swap + payment for non-stablecoins |
 
+### `SubscriptionProvider` (class)
+
+| Method | Description |
+|---|---|
+| `computeApproveAmount(plan)` | Returns `parseUnits(amount) × cycles` as bigint |
+| `ensureSubscriptionAllowance({ plan, subscriberAddress, subscriptionManagerAddress })` | Check allowance; approve if insufficient |
+| `subscribe({ plan, subscriberAddress, subscriptionManagerAddress, expiry? })` | approve → SubscriptionManager.subscribe() → decode onChainId |
+| `cancel({ chain, subscriptionManagerAddress, onChainId })` | On-chain cancel |
+
 ### `ApiClient` (class)
+
+**Invoice**
 
 | Method | Description |
 |---|---|
 | `createInvoice(params)` | Create a new invoice |
 | `getInvoice(id)` | Fetch invoice by ID |
-| `submitTransaction(invoiceId, { txHash, payerAddress, toAddress })` | Submit a txHash for tracking |
+| `getPaymentSession(invoiceId, payerAddress)` | Request a sessionToken before submitting tx |
+| `submitTransaction(invoiceId, { sessionToken, txHash, ... })` | Submit a txHash for tracking |
 | `waitForConfirmation(invoiceId, { pollInterval, timeout })` | Poll until terminal state |
+
+**Subscription Plans**
+
+| Method | Description |
+|---|---|
+| `createPlan(params)` | Create plan (apiKey required) |
+| `listPlans()` | List merchant's plans |
+| `getPlan(planId)` | Fetch plan (public) |
+| `updatePlan(planId, updates)` | Update plan |
+| `deletePlan(planId)` | Delete plan |
+
+**Subscriptions**
+
+| Method | Description |
+|---|---|
+| `subscribeToPlan(planId, { subscriberAddress, onChainId, txHash })` | Register subscription with backend (public) |
+| `listSubscriptions(status?)` | List merchant's subscriptions |
+| `getSubscription(id)` | Fetch subscription |
+| `cancelSubscription(id)` | Mark cancelled in DB (on-chain cancel is separate) |
 
 ---
 

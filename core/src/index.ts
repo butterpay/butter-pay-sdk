@@ -7,6 +7,7 @@ export { ExternalWalletAdapter } from "./wallets/external-wallet.js";
 
 // Payment Providers
 export { CryptoPaymentProvider } from "./providers/crypto-provider.js";
+export { SubscriptionProvider } from "./providers/subscription-provider.js";
 
 // API Client
 export { ApiClient, type ApiClientConfig } from "./api-client.js";
@@ -29,7 +30,11 @@ export type {
   Keystore,
   HDWalletConfig,
   PaymentMethod,
+  Plan,
+  Subscription,
+  SubscribeParams,
+  SubscribeResult,
 } from "./types.js";
 
 // ABIs
-export { ERC20_ABI, PAYMENT_ROUTER_ABI } from "./abi/index.js";
+export { ERC20_ABI, PAYMENT_ROUTER_ABI, SUBSCRIPTION_MANAGER_ABI } from "./abi/index.js";

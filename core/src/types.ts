@@ -9,6 +9,8 @@ export interface ChainConfig {
   viemChain: ViemChain;
   rpcUrl: string;
   paymentRouterAddress: Address;
+  /** SubscriptionManager contract address (zero address if not deployed on this chain) */
+  subscriptionManagerAddress?: Address;
   tokens: TokenConfig[];
   blockExplorerUrl: string;
 }
@@ -118,6 +120,63 @@ export interface BalanceInfo {
   token: string;
   balance: string; // human-readable decimal
   rawBalance: bigint;
+}
+
+// ========================= Subscriptions =========================
+
+export interface Plan {
+  id: string;
+  merchantId: string;
+  merchantName?: string;
+  merchantReceivingAddresses?: Record<string, string>;
+  name: string;
+  description?: string;
+  amountUsd: string;
+  interval: number;      // seconds
+  cycles: number;        // total billing cycles
+  chain: string;
+  token: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface Subscription {
+  id: string;
+  merchantId: string;
+  planId?: string;
+  subscriberAddress: string;
+  chain: string;
+  token: string;
+  amount: string;
+  interval: number;
+  cyclesTotal: number;
+  cyclesCharged: number;
+  onChainId?: number;
+  status: "active" | "cancelled" | "expired" | "completed" | "past_due";
+  nextChargeAt?: string;
+  lastChargedAt?: string;
+  expiresAt?: string;
+  cancelledAt?: string;
+  createdAt: string;
+}
+
+export interface SubscribeParams {
+  plan: Plan;
+  /** Subscriber wallet address (must match connected wallet) */
+  subscriberAddress: Address;
+  /** SubscriptionManager contract address on the plan's chain */
+  subscriptionManagerAddress: Address;
+  /** Expiry as unix timestamp (0 = no expiry; defaults to now + interval * cycles) */
+  expiry?: number;
+}
+
+export interface SubscribeResult {
+  subscription: Subscription;
+  onChainId: number;
+  approveTxHash?: Hash;
+  subscribeTxHash: Hash;
+  chain: ChainName;
 }
 
 // ========================= HD Wallet =========================

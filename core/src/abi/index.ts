@@ -113,3 +113,70 @@ export const PAYMENT_ROUTER_ABI = [
     outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
+
+const SUBSCRIPTION_PLAN_COMPONENTS = [
+  { name: "merchant", type: "address" },
+  { name: "token", type: "address" },
+  { name: "amount", type: "uint256" },
+  { name: "interval", type: "uint32" },
+  { name: "expiry", type: "uint32" },
+] as const;
+
+export const SUBSCRIPTION_MANAGER_ABI = [
+  {
+    name: "subscribe",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "plan", type: "tuple", components: SUBSCRIPTION_PLAN_COMPONENTS }],
+    outputs: [{ name: "subscriptionId", type: "uint256" }],
+  },
+  {
+    name: "charge",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "subscriptionId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "cancel",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "subscriptionId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "getSubscription",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "subscriptionId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "subscriber", type: "address" },
+          { name: "merchant", type: "address" },
+          { name: "token", type: "address" },
+          { name: "amount", type: "uint256" },
+          { name: "interval", type: "uint32" },
+          { name: "expiry", type: "uint32" },
+          { name: "lastCharged", type: "uint32" },
+          { name: "active", type: "bool" },
+        ],
+      },
+    ],
+  },
+  {
+    name: "SubscriptionCreated",
+    type: "event",
+    anonymous: false,
+    inputs: [
+      { name: "subscriptionId", type: "uint256", indexed: true },
+      { name: "subscriber", type: "address", indexed: true },
+      { name: "merchant", type: "address", indexed: true },
+      { name: "token", type: "address", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "interval", type: "uint32", indexed: false },
+    ],
+  },
+] as const;

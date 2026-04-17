@@ -1,12 +1,17 @@
 import { keccak256, toHex, type Address, type Hash } from "viem";
 import { ApiClient, type ApiClientConfig } from "./api-client.js";
 import { CryptoPaymentProvider } from "./providers/crypto-provider.js";
+import { SubscriptionProvider } from "./providers/subscription-provider.js";
+import { defaultChainConfigs } from "./chains.js";
 import type {
   WalletAdapter,
   ChainName,
   ChainConfig,
   BalanceInfo,
   Invoice,
+  Plan,
+  Subscription,
+  SubscribeResult,
 } from "./types.js";
 
 export interface ButterPayConfig {
@@ -28,6 +33,8 @@ export class ButterPay {
   private api: ApiClient;
   private wallet: WalletAdapter;
   private cryptoProvider: CryptoPaymentProvider;
+  private subscriptionProvider: SubscriptionProvider;
+  private chains: Record<string, ChainConfig>;
 
   constructor(config: ButterPayConfig) {
     this.api = new ApiClient({
@@ -39,6 +46,20 @@ export class ButterPay {
       config.wallet,
       config.chains
     );
+    this.subscriptionProvider = new SubscriptionProvider(
+      config.wallet,
+      config.chains
+    );
+
+    // Merge chains for local use
+    this.chains = { ...defaultChainConfigs };
+    if (config.chains) {
+      for (const [name, overrides] of Object.entries(config.chains)) {
+        if (this.chains[name]) {
+          this.chains[name] = { ...this.chains[name], ...overrides };
+        }
+      }
+    }
   }
 
   // ========================= Wallet =========================
@@ -146,5 +167,144 @@ export class ButterPay {
 
   async waitForConfirmation(invoiceId: string): Promise<Invoice> {
     return this.api.waitForConfirmation(invoiceId);
+  }
+
+  // ========================= Subscription Plans (merchant) =========================
+
+  /** Create a subscription plan (requires apiKey). */
+  async createPlan(params: {
+    name: string;
+    amountUsd: string;
+    intervalSeconds: number;
+    cycles: number;
+    chain?: string;
+    token?: string;
+    description?: string;
+  }): Promise<Plan> {
+    return this.api.createPlan(params);
+  }
+
+  /** List the merchant's plans. */
+  async listPlans(): Promise<Plan[]> {
+    return this.api.listPlans();
+  }
+
+  /** Get a plan by ID (public — used by /subscribe/[planId] pages). */
+  async getPlan(planId: string): Promise<Plan> {
+    return this.api.getPlan(planId);
+  }
+
+  /** Update a plan (e.g., toggle `active`). */
+  async updatePlan(
+    planId: string,
+    updates: Partial<{ name: string; description: string; active: boolean }>
+  ): Promise<Plan> {
+    return this.api.updatePlan(planId, updates);
+  }
+
+  /** Delete a plan — rejected if live subscribers exist. */
+  async deletePlan(planId: string): Promise<{ deleted: boolean }> {
+    return this.api.deletePlan(planId);
+  }
+
+  // ========================= Subscription (user flow) =========================
+
+  /**
+   * Full subscription flow — call from the /subscribe/[planId] page after
+   * the user connects their wallet.
+   *
+   *   1. Fetch plan details (if not provided)
+   *   2. Approve SubscriptionManager for `amount × cycles` tokens
+   *   3. Call SubscriptionManager.subscribe(plan) — creates on-chain subscription + first charge
+   *   4. Register the subscription with the backend (POST /v1/plans/:id/subscribe)
+   *
+   * Returns the persisted subscription + on-chain details.
+   */
+  async subscribe(params: {
+    planId: string;
+    /** Pre-fetched plan (optional — will fetch if omitted) */
+    plan?: Plan;
+    /** Override the SubscriptionManager address (defaults to chain config) */
+    subscriptionManagerAddress?: Address;
+    /** Expiry unix timestamp (0 = no expiry; defaults to now + interval × cycles) */
+    expiry?: number;
+  }): Promise<SubscribeResult> {
+    const subscriberAddress = this.wallet.getAddress();
+    if (!subscriberAddress) throw new Error("Wallet not connected");
+
+    const plan = params.plan ?? (await this.api.getPlan(params.planId));
+    const chain = plan.chain as ChainName;
+
+    const subscriptionManagerAddress =
+      params.subscriptionManagerAddress ??
+      this.chains[chain]?.subscriptionManagerAddress;
+
+    if (!subscriptionManagerAddress) {
+      throw new Error(`SubscriptionManager not configured for ${chain}`);
+    }
+
+    // Step 1-3: on-chain approve + subscribe
+    const onChain = await this.subscriptionProvider.subscribe({
+      plan,
+      subscriberAddress,
+      subscriptionManagerAddress,
+      expiry: params.expiry,
+    });
+
+    // Step 4: register with backend
+    const subscription = await this.api.subscribeToPlan(plan.id, {
+      subscriberAddress,
+      onChainId: onChain.onChainId,
+      txHash: onChain.subscribeTxHash,
+    });
+
+    return {
+      subscription,
+      onChainId: onChain.onChainId,
+      approveTxHash: onChain.approveTxHash,
+      subscribeTxHash: onChain.subscribeTxHash,
+      chain,
+    };
+  }
+
+  /** List the merchant's subscriptions. */
+  async listSubscriptions(status?: string): Promise<Subscription[]> {
+    return this.api.listSubscriptions(status);
+  }
+
+  /** Get a single subscription. */
+  async getSubscription(id: string): Promise<Subscription> {
+    return this.api.getSubscription(id);
+  }
+
+  /**
+   * Cancel a subscription. Performs two actions:
+   *   1. On-chain: calls SubscriptionManager.cancel() — stops future charges
+   *   2. Backend: marks subscription as cancelled in DB
+   *
+   * Requires the connected wallet to be the subscriber. Use `apiOnly: true`
+   * to only mark the backend record (e.g., from the merchant Dashboard).
+   */
+  async cancelSubscription(
+    subscriptionId: string,
+    opts?: { apiOnly?: boolean }
+  ): Promise<{ subscription: Subscription; cancelTxHash?: Hash }> {
+    const sub = await this.api.getSubscription(subscriptionId);
+
+    let cancelTxHash: Hash | undefined;
+    if (!opts?.apiOnly && sub.onChainId !== undefined && sub.onChainId !== null) {
+      const chain = sub.chain as ChainName;
+      const subMgrAddr = this.chains[chain]?.subscriptionManagerAddress;
+      if (subMgrAddr) {
+        cancelTxHash = await this.subscriptionProvider.cancel({
+          chain,
+          subscriptionManagerAddress: subMgrAddr,
+          onChainId: sub.onChainId,
+        });
+      }
+    }
+
+    const cancelled = await this.api.cancelSubscription(subscriptionId);
+    return { subscription: cancelled, cancelTxHash };
   }
 }
