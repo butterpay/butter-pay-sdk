@@ -14,6 +14,9 @@ const arbitrumSepolia = defineChain({
 // Default PaymentRouter address — update after mainnet deployment
 const DEFAULT_PAYMENT_ROUTER = "0x0000000000000000000000000000000000000000" as const;
 
+// Arbitrum mainnet deployed address (2026-04-16)
+const ARBITRUM_PAYMENT_ROUTER = "0x4b32bcd3eC4F0a14D7061e0d239eBAd84F77743f" as const;
+
 // Testnet deployed address
 const TESTNET_PAYMENT_ROUTER = "0x2bb7f9678c6FC1F2538172F5621087a9D44F9D63" as const;
 const TESTNET_SUBSCRIPTION_MANAGER = "0x51Aaf344ee7b3d35e8347afbDA777e45c7441cd6" as const;
@@ -52,8 +55,8 @@ export const defaultChainConfigs: Record<ChainName, ChainConfig> = {
     name: "arbitrum",
     viemChain: arbitrum,
     rpcUrl: "https://arb1.arbitrum.io/rpc",
-    paymentRouterAddress: DEFAULT_PAYMENT_ROUTER,
-    subscriptionManagerAddress: ZERO_ADDRESS,
+    paymentRouterAddress: ARBITRUM_PAYMENT_ROUTER,
+    subscriptionManagerAddress: "0xBC7a2Ea456AE255C67b98Bd9559F15Fc742C0C66",
     blockExplorerUrl: "https://arbiscan.io",
     tokens: [
       { symbol: "USDT", address: USDT.arbitrum, decimals: 6 },

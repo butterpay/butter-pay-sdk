@@ -1,25 +1,56 @@
 {
   "name": "@butterpay/core",
   "version": "0.1.0",
-  "description": "ButterPay Core SDK - wallet, payment, and API client",
+  "description": "ButterPay Core SDK - wallet, payment, and subscription API client for non-custodial crypto payments",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [
     "butterpay",
     "crypto",
     "payment",
+    "stablecoin",
+    "usdt",
+    "usdc",
+    "web3",
+    "evm",
+    "subscription",
     "sdk"
   ],
+  "author": "ButterPay",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/butterpay/butter-pay-sdk.git",
+    "directory": "core"
+  },
+  "bugs": {
+    "url": "https://github.com/butterpay/butter-pay-sdk/issues"
+  },
+  "homepage": "https://github.com/butterpay/butter-pay-sdk#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
