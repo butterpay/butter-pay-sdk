@@ -25,6 +25,23 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      # Debug: confirm secret is set and inspect npmrc
+      - name: Debug NPM_TOKEN
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "❌ NODE_AUTH_TOKEN is EMPTY — secret not set or name mismatch"
+            exit 1
+          else
+            echo "✅ NODE_AUTH_TOKEN length: ${#NODE_AUTH_TOKEN}"
+            echo "✅ Starts with: ${NODE_AUTH_TOKEN:0:7}..."
+          fi
+          echo "--- ~/.npmrc ---"
+          cat ~/.npmrc | sed 's/_authToken=.*/_authToken=<redacted>/'
+          echo "--- npm whoami ---"
+          npm whoami || echo "⚠ whoami failed"
+
       - run: npm ci
 
       - run: npm run build
