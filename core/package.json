@@ -1,6 +1,6 @@
 {
   "name": "@butterpay/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "ButterPay Core SDK - wallet, payment, and subscription API client for non-custodial crypto payments",
   "type": "module",
   "main": "dist/index.js",

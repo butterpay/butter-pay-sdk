@@ -38,3 +38,6 @@ export type {
 
 // ABIs
 export { ERC20_ABI, PAYMENT_ROUTER_ABI, SUBSCRIPTION_MANAGER_ABI } from "./abi/index.js";
+
+// Utilities
+export { tgPayUrl, type TgPayUrlOptions } from "./utils/tg-pay-url.js";

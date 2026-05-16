@@ -113,6 +113,14 @@ export interface Invoice {
   expiresAt?: string;
   redirectUrl?: string;
   createdAt: string;
+  /** Hosted web payment page URL — present on the create response. */
+  payUrl?: string;
+  /**
+   * Telegram Mini App payment link — present on the create response
+   * iff the backend has TG_BOT_USERNAME configured. Same payment id
+   * as `payUrl`, just routed through Telegram instead of the browser.
+   */
+  tgPayUrl?: string;
 }
 
 export interface BalanceInfo {
