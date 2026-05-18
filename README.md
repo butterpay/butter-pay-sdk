@@ -241,8 +241,11 @@ const invoice = await api.createInvoice({
   metadata: { customerId: "cust_001" },
 });
 
-// Redirect user to the hosted payment page
-const payUrl = `https://butterpay.io/pay/${invoice.id}`;
+// Redirect user to the hosted payment page (server fills this in,
+// just read it off the invoice response — no manual string composition
+// needed).
+const payUrl = invoice.payUrl;
+// → https://dashboard.butterpay.io/pay/inv_…
 
 // Later, query status or rely on webhooks:
 const status = await api.getInvoice(invoice.id);
@@ -284,8 +287,9 @@ const plan = await api.createPlan({
   token: "USDT",
 });
 
-// Share this URL with users
-const subscribeUrl = `https://butterpay.io/subscribe/${plan.id}`;
+// Share this URL with users — the hosted subscribe page is served
+// at the same dashboard domain as one-time payments.
+const subscribeUrl = `https://dashboard.butterpay.io/subscribe/${plan.id}`;
 ```
 
 Plan management:
