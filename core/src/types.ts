@@ -147,6 +147,12 @@ export interface Plan {
   active: boolean;
   createdAt: string;
   updatedAt?: string;
+  /**
+   * Telegram Mini App subscribe link — present on the create
+   * intent + GET responses iff the backend has TG_BOT_USERNAME
+   * configured. Same plan id as the row, routed through Telegram.
+   */
+  tgSubscribeUrl?: string;
 }
 
 export interface Subscription {

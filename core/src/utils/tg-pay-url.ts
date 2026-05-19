@@ -1,25 +1,26 @@
-// Telegram Mini App link helper.
+// Telegram Mini App link helpers.
 //
 // The backend already returns `tgPayUrl` on every CreateInvoiceResult
-// when TG_BOT_USERNAME is configured server-side (see
-// butter-pay/backend/src/services/payment.service.ts). This helper is
-// for two callers the server response doesn't cover:
+// (and `tgSubscribeUrl` on Plan responses) when `TG_BOT_USERNAME` is
+// configured server-side. These helpers are for two callers the
+// server response doesn't cover:
 //
-//  1. SDK consumers who want to build the link from a known invoice id
+//  1. SDK consumers who want to build the link from a known id
 //     without an extra round-trip (e.g. caching it client-side, or
 //     constructing it from an id that arrived through their own
 //     channels).
 //  2. Self-hosted deployments where the bot lives on a different
-//     username than the API's own TG_BOT_USERNAME — `botUsername` lets
-//     them override.
+//     username or the merchant uses different short names than the
+//     API's defaults — the override options let them swap in
+//     custom values per call.
 //
-// Returns a `t.me/<bot>/<short>?startapp=<id>` URL. Both the short
-// name and an `t.me/<bot>?start=<id>` variant fall back to defaults
-// matching the spec at
+// Returns a `t.me/<bot>/<short>?startapp=<id>` URL. Defaults match
+// the spec at
 // docs/superpowers/specs/2026-05-12-tg-miniapp-design.md.
 
 const DEFAULT_BOT_USERNAME = "ButterPayBot";
-const DEFAULT_SHORT_NAME = "pay";
+const DEFAULT_PAY_SHORT_NAME = "pay";
+const DEFAULT_SUBSCRIBE_SHORT_NAME = "subscribe";
 
 export interface TgPayUrlOptions {
   /** Bot username without the leading @ (e.g. "ButterPayBot"). */
@@ -29,6 +30,20 @@ export interface TgPayUrlOptions {
    * Defaults to "pay".
    */
   shortName?: string;
+}
+
+export interface TgSubscribeUrlOptions {
+  botUsername?: string;
+  /** Mini App short name for the subscribe app. Defaults to "subscribe". */
+  shortName?: string;
+}
+
+function compose(
+  bot: string,
+  shortName: string,
+  id: string,
+): string {
+  return `https://t.me/${bot}/${shortName}?startapp=${encodeURIComponent(id)}`;
 }
 
 /**
@@ -50,8 +65,6 @@ export function tgPayUrl(
   invoiceIdOrInvoice: string | { id: string; tgPayUrl?: string },
   options?: TgPayUrlOptions,
 ): string {
-  // Prefer the server-supplied URL when caller passes a full Invoice
-  // and the field is set — the server knows the deployment's bot.
   if (
     typeof invoiceIdOrInvoice === "object" &&
     typeof invoiceIdOrInvoice.tgPayUrl === "string" &&
@@ -65,8 +78,47 @@ export function tgPayUrl(
       ? invoiceIdOrInvoice
       : invoiceIdOrInvoice.id;
 
-  const bot = options?.botUsername ?? DEFAULT_BOT_USERNAME;
-  const short = options?.shortName ?? DEFAULT_SHORT_NAME;
+  return compose(
+    options?.botUsername ?? DEFAULT_BOT_USERNAME,
+    options?.shortName ?? DEFAULT_PAY_SHORT_NAME,
+    id,
+  );
+}
 
-  return `https://t.me/${bot}/${short}?startapp=${encodeURIComponent(id)}`;
+/**
+ * Compose a Telegram Mini App subscribe link for a plan id.
+ *
+ * Accepts either the `pln_*` DB id or the bytes32 on-chain id — the
+ * public GET /v1/plans/:id endpoint handles both.
+ *
+ * @example
+ *   tgSubscribeUrl("pln_abc123");
+ *   // → https://t.me/ButterPayBot/subscribe?startapp=pln_abc123
+ *
+ *   tgSubscribeUrl(plan);
+ *   // ← reads plan.tgSubscribeUrl if backend supplied it
+ *
+ *   tgSubscribeUrl(plan, { shortName: "subscribetest" });
+ *   // → override per call
+ */
+export function tgSubscribeUrl(
+  planIdOrPlan: string | { id: string; tgSubscribeUrl?: string },
+  options?: TgSubscribeUrlOptions,
+): string {
+  if (
+    typeof planIdOrPlan === "object" &&
+    typeof planIdOrPlan.tgSubscribeUrl === "string" &&
+    planIdOrPlan.tgSubscribeUrl.length > 0
+  ) {
+    return planIdOrPlan.tgSubscribeUrl;
+  }
+
+  const id =
+    typeof planIdOrPlan === "string" ? planIdOrPlan : planIdOrPlan.id;
+
+  return compose(
+    options?.botUsername ?? DEFAULT_BOT_USERNAME,
+    options?.shortName ?? DEFAULT_SUBSCRIBE_SHORT_NAME,
+    id,
+  );
 }
